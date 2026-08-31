@@ -1,0 +1,17 @@
+#cloud-config
+users:
+  - name: test_user
+    groups: sudo, docker
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+runcmd:
+  - mkdir -p /home/test_user/.ssh
+  - echo "${ssh_private_key_azure_b64}" | base64 -d > /home/test_user/.ssh/azure
+  - chmod 600 /home/test_user/.ssh/azure
+  - chown -R test_user:test_user /home/test_user/.ssh
+
+

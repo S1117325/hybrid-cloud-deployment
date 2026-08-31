@@ -1,0 +1,74 @@
+name: Hybrid Cloud Deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, hybrid]   # self-hosted runner in het labnetwerk
+    env:
+      ARM_CLIENT_ID:          ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET:      ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_TENANT_ID:          ${{ secrets.ARM_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID:    ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      TF_VAR_esxi_password:   ${{ secrets.ESXI_PASSWORD }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Zet SSH keys klaar
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "${{ secrets.SSH_AZURE_PRIVATE }}"  > ~/.ssh/azure
+          echo "${{ secrets.SSH_AZURE_PUBLIC }}"   > ~/.ssh/azure.pub
+          echo "${{ secrets.SSH_SKYLAB_PRIVATE }}" > ~/.ssh/skylab
+          echo "${{ secrets.SSH_SKYLAB_PUBLIC }}"  > ~/.ssh/skylab.pub
+          chmod 600 ~/.ssh/azure ~/.ssh/skylab
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Installeer Ansible collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
+
+      # ---------- TEST: valideer code voor deployment ----------
+      - name: Terraform validate (azure)
+        run: |
+          cd terraform/azure
+          terraform init -input=false
+          terraform validate
+
+      - name: Terraform validate (esxi)
+        run: |
+          cd terraform/esxi
+          terraform init -input=false
+          terraform validate
+
+      - name: Ansible syntax check
+        run: |
+          cd ansible
+          ansible-playbook playbook.yml --syntax-check -i azure_inventory.ini
+
+      # ---------- DEPLOY: Azure ----------
+      - name: Deploy Azure (Terraform -> Cloud-Init -> Ansible)
+        run: |
+          cd terraform/azure
+          terraform apply -auto-approve -input=false
+
+      # ---------- DEPLOY: ESXi ----------
+      - name: Deploy ESXi (Terraform -> Cloud-Init -> Ansible)
+        run: |
+          cd terraform/esxi
+          terraform apply -auto-approve -input=false
+
+      # ---------- TEST: hybrid connectie ----------
+      - name: Test hybrid verbinding (ESXi -> Azure)
+        run: |
+          cd terraform/azure
+          AZURE_IP=$(terraform output -raw azure_public_ip)
+          cd ../../ansible
+          ansible-playbook -i esxi_inventory.ini hybrid_test.yml -e "azure_ip=$AZURE_IP"

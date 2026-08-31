@@ -1,0 +1,23 @@
+---
+# Bewijst de hybrid connectie: de ESXi-VM SSH't met de geinjecteerde
+# Azure private key naar de Azure-VM en haalt daar de nginx-pagina op.
+#
+# Gebruik:
+#   ansible-playbook -i esxi_inventory.ini hybrid_test.yml -e "azure_ip=<AZURE_PUBLIC_IP>"
+- name: Test hybrid verbinding ESXi -> Azure
+  hosts: esxi
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: SSH vanaf ESXi-VM naar Azure-VM en haal de app op
+      ansible.builtin.shell: >
+        ssh -i ~/.ssh/azure -o StrictHostKeyChecking=no
+        test_user@{{ azure_ip }}
+        "hostname && curl -s http://localhost | grep -o 'Hello World'"
+      register: hybrid_result
+      changed_when: false
+
+    - name: Toon resultaat
+      ansible.builtin.debug:
+        msg: "Hybrid verbinding werkt! Azure-VM antwoordde met: {{ hybrid_result.stdout_lines }}"

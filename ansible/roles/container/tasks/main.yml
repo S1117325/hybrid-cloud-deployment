@@ -1,0 +1,30 @@
+---
+- name: Wacht tot de Docker socket klaar is
+  wait_for:
+    path: /var/run/docker.sock
+    timeout: 30
+
+- name: Maak app-directory aan
+  file:
+    path: "{{ app_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Kopieer docker-compose bestand
+  copy:
+    src: docker-compose.yml
+    dest: "{{ app_dir }}/docker-compose.yml"
+    mode: "0644"
+  notify: restart compose stack
+
+- name: Kopieer de web-pagina
+  copy:
+    src: index.html
+    dest: "{{ app_dir }}/index.html"
+    mode: "0644"
+  notify: restart compose stack
+
+- name: Start de Docker Compose stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}"
+    state: present

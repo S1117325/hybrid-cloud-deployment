@@ -1,0 +1,18 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform.lock.hcl
+crash.log
+
+# Secrets (nooit committen!)
+*secret*.tfvars
+*.auto.tfvars
+!*.auto.tfvars.example
+.env
+
+# SSH keys
+*.pem
+id_*
+*_key

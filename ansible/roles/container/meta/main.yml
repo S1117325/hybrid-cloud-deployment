@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: container
+  author: S1117325
+  description: Rolt een Docker Compose applicatie (nginx hello-world) uit
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - docker
+    - compose
+dependencies:
+  - role: docker

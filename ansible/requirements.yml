@@ -1,0 +1,5 @@
+---
+# Collections die de control node (runner/WSL) nodig heeft
+collections:
+  - name: community.docker
+    version: ">=3.4.0"

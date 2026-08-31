@@ -1,0 +1,11 @@
+#cloud-config
+package_update: true
+
+packages:
+  - docker.io
+
+runcmd:
+  # Azure maakt 'test_user' al aan via admin_ssh_key; hier alleen docker-rechten geven
+  - usermod -aG docker test_user
+  - systemctl enable docker
+  - systemctl start docker

@@ -1,0 +1,8 @@
+---
+- name: Hybrid Docker Deployment
+  hosts: all
+  become: true
+
+  roles:
+    - docker
+    - container

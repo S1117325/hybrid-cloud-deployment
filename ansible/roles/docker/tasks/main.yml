@@ -1,0 +1,27 @@
+---
+- name: Installeer Docker engine (docker.io) en python-docker
+  apt:
+    name:
+      - "{{ docker_package }}"
+      - python3-docker
+    state: present
+    update_cache: yes
+  notify: restart docker
+
+- name: Maak cli-plugins map voor Docker Compose
+  file:
+    path: /usr/local/lib/docker/cli-plugins
+    state: directory
+    mode: "0755"
+
+- name: Installeer Docker Compose v2 plugin
+  get_url:
+    url: "{{ docker_compose_url }}"
+    dest: /usr/local/lib/docker/cli-plugins/docker-compose
+    mode: "0755"
+
+- name: Start en enable de Docker service
+  systemd:
+    name: docker
+    enabled: yes
+    state: started
