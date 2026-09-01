@@ -37,6 +37,12 @@ resource "local_file" "esxi_inventory" {
 resource "null_resource" "ansible_provisioner_esxi" {
   depends_on = [esxi_guest.databaseserver]
 
+    # Draai Ansible opnieuw zodra de VM verandert (bv. bij -replace of nieuw IP)
+  triggers = {
+    vm_id = esxi_guest.databaseserver.id
+    vm_ip = esxi_guest.databaseserver.ip_address
+  }
+
   provisioner "local-exec" {
     command = "ansible-playbook -i ${path.module}/../../ansible/esxi_inventory.ini ${path.module}/../../ansible/playbook.yml"
   }
