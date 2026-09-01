@@ -103,8 +103,25 @@ echte waardes.
 - Code wordt automatisch getest in de pipeline voordat er iets mee gebeurt
 - Docker geinstalleerd vanuit docker.io, app draait via Docker Compose
 
+## Over de Azure omgeving
+
+Voor deze opdracht heb ik een gratis Azure proefaccount gebruikt. Daardoor liep ik
+tegen een paar beperkingen aan die je terugziet in de code:
+
+- De regio staat op `germanywestcentral`. De standaard regio's westeurope en
+  northeurope hadden geen capaciteit voor nieuwe gratis accounts.
+- De VM size is `Standard_B1s`, een kleine VM, om binnen het gratis tegoed te
+  blijven.
+- Bij een verse subscription moesten de resource providers (Microsoft.Network,
+  Microsoft.Compute en Microsoft.Storage) eenmalig geregistreerd worden voordat
+  Terraform resources kon aanmaken.
+
+De regio en VM size worden via `terraform.tfvars` ingesteld, zodat je de code niet
+hoeft aan te passen als je een andere regio wilt gebruiken.
+
 ## Status
 
-De ESXi kant werkt volledig: VM aanmaken, Cloud-Init, Ansible, Docker Compose en
-passwordless SSH. De Azure kant en de hybrid test staan klaar in de code maar zijn
-nog niet gedeployed omdat ik nog wacht op een werkende Azure subscription.
+Beide omgevingen werken volledig. De ESXi VM en de Azure VM worden aangemaakt met
+Terraform, ingericht met Cloud-Init en Ansible, en draaien de app via Docker
+Compose. Passwordless SSH werkt, en de hybrid connectie is getest: de ESXi VM logt
+met de geinjecteerde Azure key in op de Azure VM en haalt daar de applicatie op.
