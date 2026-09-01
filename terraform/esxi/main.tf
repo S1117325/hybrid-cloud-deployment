@@ -49,7 +49,4 @@ resource "null_resource" "ansible_provisioner_esxi" {
 }
 
 
-output "azure_public_ip" {
-  value = esxi_guest.databaseserver.ip_address
-}
 
