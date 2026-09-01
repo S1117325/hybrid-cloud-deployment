@@ -1,77 +1,110 @@
 # Hybrid Cloud Deployment
 
-Volledig geautomatiseerde hybrid cloud deployment die **Azure VM's** en **ESXi VM's**
-combineert. De hele keten (provisioning + configuratie + applicatie) draait via
-**GitHub Actions**, met **Terraform**, **Cloud-Init**, **Ansible** en **Docker Compose**.
+Dit project zet een hybrid cloud omgeving op waarin een Azure VM en een ESXi VM
+samenwerken. De VM's worden aangemaakt met Terraform, ingericht met Cloud-Init en
+Ansible, en draaien een applicatie in Docker via Docker Compose. GitHub Actions
+controleert bij elke push automatisch of de code klopt.
 
-## Architectuur
+## Hoe het werkt
 
-```
-GitHub Actions (self-hosted runner in labnetwerk)
-│
-├── Terraform (Azure)  ── Cloud-Init ─┐
-│      └── Azure Linux VM             │
-│            └── Ansible ── Docker Compose ── nginx "Hello World" app  :80
-│
-├── Terraform (ESXi)   ── Cloud-Init ─┤
-│      └── ESXi guest VM              │  (Azure private key geïnjecteerd)
-│            └── Ansible ── Docker
-│
-└── Hybrid test: ESXi-VM SSH't met de Azure-key naar de Azure-VM
-```
+Er zijn twee omgevingen:
 
-De **hybrid connectie** wordt bewezen doordat de ESXi-VM met de (via Cloud-Init
-geïnjecteerde) Azure private key naar de Azure-VM SSH't en daar de draaiende
-applicatie ophaalt.
+1. Een ESXi VM (databaseserver) die lokaal in het labnetwerk draait.
+2. Een Azure VM die in de cloud draait.
 
-## Structuur
+Beide VM's worden met Terraform aangemaakt. Cloud-Init zorgt voor de basis (user,
+docker install) en daarna neemt Ansible het over om Docker en de applicatie te
+installeren. De app is een nginx container die via Docker Compose draait en een
+simpele webpagina serveert.
 
-| Pad | Inhoud |
+De verbinding tussen de twee omgevingen loopt via SSH. Bij het aanmaken van de
+ESXi VM wordt de private key van Azure meegegeven (via Cloud-Init). Daardoor kan
+de ESXi VM straks naar de Azure VM SSH'en zonder wachtwoord. Dat is de hybrid
+connectie.
+
+## Mapstructuur
+
+| Map | Wat er in zit |
 |-----|--------|
-| `terraform/azure/` | Azure VM, netwerk, NSG, public IP, cloud-init |
-| `terraform/esxi/`  | ESXi guest VM via `josenk/esxi` provider |
-| `ansible/roles/docker/`    | Eigen Galaxy-role: installeert docker.io + compose plugin |
-| `ansible/roles/container/` | Eigen Galaxy-role: rolt de compose-app uit (dependency op `docker`) |
-| `ansible/hybrid_test.yml`  | Test die de hybrid verbinding verifieert |
-| `.github/workflows/deploy.yml` | Volledige CI/CD pipeline |
+| `terraform/azure/` | Terraform code voor de Azure VM, netwerk, NSG en public IP |
+| `terraform/esxi/`  | Terraform code voor de ESXi VM via de `josenk/esxi` provider |
+| `ansible/roles/docker/`    | Zelfgemaakte role die docker.io en de compose plugin installeert |
+| `ansible/roles/container/` | Zelfgemaakte role die de compose app uitrolt (heeft docker role nodig) |
+| `ansible/hybrid_test.yml`  | Playbook dat test of de ESXi VM de Azure VM kan bereiken |
+| `.github/workflows/deploy.yml` | GitHub Actions pipeline die de code valideert |
 
-## Benodigde secrets (GitHub → Settings → Secrets → Actions)
+## Over de GitHub Actions pipeline
 
-| Secret | Uitleg |
-|--------|--------|
-| `ARM_CLIENT_ID` / `ARM_CLIENT_SECRET` / `ARM_TENANT_ID` / `ARM_SUBSCRIPTION_ID` | Azure Service Principal |
-| `ESXI_PASSWORD` | Wachtwoord ESXi-host |
-| `SSH_AZURE_PRIVATE` / `SSH_AZURE_PUBLIC` | Azure keypair |
-| `SSH_SKYLAB_PRIVATE` / `SSH_SKYLAB_PUBLIC` | ESXi keypair |
+De pipeline draait bij elke push en doet het volgende:
 
-## Lokaal draaien (WSL)
+- controleert of de Terraform code netjes geformatteerd is (`terraform fmt`)
+- valideert de Terraform code voor zowel Azure als ESXi (`terraform validate`)
+- checkt of de Ansible playbooks geldig zijn (`--syntax-check`)
+
+De pipeline doet dus de validatie en tests, niet de echte deployment. Dat is een
+bewuste keuze. Terraform houdt bij welke VM's er al draaien in een state bestand,
+en dat bestand staat in `.gitignore` zodat het niet in Git komt. De GitHub runner
+heeft die state dus niet en zou een tweede VM proberen aan te maken. Daarom draai
+ik de echte deployment gecontroleerd vanaf mijn eigen machine met `terraform apply`,
+en gebruik ik de pipeline om de code automatisch te testen. Zo blijft alles
+overzichtelijk en voorkom ik dubbele of kapotte deployments.
+
+## Zelf draaien (WSL)
 
 ```bash
-# 1. SSH keys
+# 1. SSH keys aanmaken
 ssh-keygen -t ed25519 -f ~/.ssh/azure  -C azure-vm -N ""
 ssh-keygen -t ed25519 -f ~/.ssh/skylab -C esxi-vm  -N ""
 
-# 2. Tools
+# 2. Tools installeren
 sudo apt install -y ansible
 ansible-galaxy collection install -r ansible/requirements.yml
-az login
 
-# 3. Secrets lokaal zetten (worden door .gitignore genegeerd)
-cp terraform/azure/secret.auto.tfvars.example terraform/azure/secret.auto.tfvars
-cp terraform/esxi/secret.auto.tfvars.example  terraform/esxi/secret.auto.tfvars
-# -> vul je subscription_id en esxi_password in
+# 3. Secrets lokaal zetten (staan in .gitignore, komen niet in Git)
+cp terraform/esxi/secret.auto.tfvars.example terraform/esxi/secret.auto.tfvars
+# vul hierin het esxi_password in
 
-# 4. Azure
-cd terraform/azure && terraform init && terraform apply
-
-# 5. ESXi (vereist ovftool + SSH aan op de ESXi-host)
-cd ../esxi && terraform init && terraform apply
+# 4. ESXi VM deployen (ovftool moet geinstalleerd zijn en SSH aan op de ESXi host)
+cd terraform/esxi
+terraform init
+terraform apply
 ```
 
-## Best practices in dit project
+Na `terraform apply` maakt Terraform de VM aan, draait Cloud-Init en voert Ansible
+de rest uit. Daarna kun je met je key inloggen zonder wachtwoord:
 
-- Secrets niet in Git: subscription ID en ESXi-wachtwoord via secrets / `TF_VAR_*` / `secret.auto.tfvars`.
-- `.gitignore` sluit state, keys en `*secret*` / `*.auto.tfvars` uit.
-- Eigen Ansible-roles met Galaxy-structuur (`meta/main.yml`, role-dependency).
-- `terraform validate` + `ansible --syntax-check` als test-stap vóór deployment.
-- Docker via `docker.io`, applicatie via Docker Compose.
+```bash
+ssh -i ~/.ssh/skylab test_user@<ip-van-de-vm>
+```
+
+En de app bekijken:
+
+```bash
+curl http://<ip-van-de-vm>
+```
+
+## Secrets
+
+Wachtwoorden en de subscription ID staan nooit in de code. Ze worden op twee
+plekken bijgehouden:
+
+- Lokaal in `secret.auto.tfvars` bestanden (staan in `.gitignore`)
+- In GitHub onder Settings > Secrets voor de pipeline
+
+De `.example` bestanden laten zien welke variabelen je moet invullen, zonder de
+echte waardes.
+
+## Best practices die ik heb toegepast
+
+- Geen secrets in Git, alles via secret bestanden en GitHub Secrets
+- `.gitignore` sluit state, keys en secret bestanden uit
+- Eigen Ansible roles met Galaxy structuur (`meta/main.yml` en een dependency
+  tussen de roles)
+- Code wordt automatisch getest in de pipeline voordat er iets mee gebeurt
+- Docker geinstalleerd vanuit docker.io, app draait via Docker Compose
+
+## Status
+
+De ESXi kant werkt volledig: VM aanmaken, Cloud-Init, Ansible, Docker Compose en
+passwordless SSH. De Azure kant en de hybrid test staan klaar in de code maar zijn
+nog niet gedeployed omdat ik nog wacht op een werkende Azure subscription.
