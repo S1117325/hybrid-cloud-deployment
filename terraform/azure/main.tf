@@ -50,7 +50,7 @@ resource "azurerm_network_security_group" "nsg" {
     source_port_range          = "*"
     destination_port_range     = "*"
   }
-    security_rule {
+  security_rule {
     name                       = "AllowHTTP"
     priority                   = 120
     direction                  = "Inbound"
