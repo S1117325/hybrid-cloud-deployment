@@ -1,48 +1,48 @@
-name: Hybrid Cloud Deployment
+name: CI - Validatie & Tests
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 # ===================================================================
-# LET OP: deze workflow draait nu de ESXi-kant (werkt volledig).
-# De Azure-kant + hybrid test zet je aan zodra je een werkende
-# Azure subscription hebt.
+# Deze pipeline VALIDEERT en TEST de code bij elke push (feedbackloop).
+# De daadwerkelijke deployment gebeurt gecontroleerd via 'terraform
+# apply' (zie README) omdat de Terraform-state niet in Git staat en
+# dus niet gedeeld wordt met de CI-runner. Dit is bewuste best practice:
+# CI test, deploy gebeurt apart en gecontroleerd.
 # ===================================================================
 
 jobs:
-  deploy-esxi:
+  validate:
     runs-on: [self-hosted, hybrid]
-    env:
-      TF_VAR_esxi_password: ${{ secrets.ESXI_PASSWORD }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Zet SSH keys klaar
-        run: |
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          echo "${{ secrets.SSH_SKYLAB_PRIVATE }}" > ~/.ssh/skylab
-          echo "${{ secrets.SSH_AZURE_PRIVATE }}"  > ~/.ssh/azure
-          chmod 600 ~/.ssh/skylab ~/.ssh/azure
+      - name: Terraform format check
+        run: terraform fmt -check -recursive terraform/
 
-      - name: Installeer Ansible collections
-        run: ansible-galaxy collection install -r ansible/requirements.yml
+      - name: Terraform validate (azure)
+        run: |
+          cd terraform/azure
+          terraform init -backend=false -input=false
+          terraform validate
 
       - name: Terraform validate (esxi)
         run: |
           cd terraform/esxi
-          terraform init -input=false
+          terraform init -backend=false -input=false
           terraform validate
+
+      - name: Installeer Ansible collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
 
       - name: Ansible syntax check
         run: |
           cd ansible
           ansible-playbook playbook.yml --syntax-check -i esxi_inventory.ini
-
-      - name: Deploy ESXi
-        run: |
-          cd terraform/esxi
-          terraform apply -auto-approve -input=false
+          ansible-playbook hybrid_test.yml --syntax-check -i esxi_inventory.ini
